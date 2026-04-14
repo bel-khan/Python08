@@ -1,87 +1,68 @@
 import os
+import sys
 from dotenv import load_dotenv
 
 
-REQUIRED_KEYS = ["DATABASE_URL", "API_KEY", "ZION_ENDPOINT"]
-
-
-def get_config() -> dict[str, str]:
+def load_configuration():
     load_dotenv()
-    return {
+
+
+def get_config():
+    config = {
         "MATRIX_MODE": os.getenv("MATRIX_MODE", "development"),
-        "DATABASE_URL": os.getenv("DATABASE_URL", ""),
-        "API_KEY": os.getenv("API_KEY", ""),
+        "DATABASE_URL": os.getenv("DATABASE_URL", "sqlite://localhost/matrix.db"),
+        "API_KEY": os.getenv("API_KEY"),
         "LOG_LEVEL": os.getenv("LOG_LEVEL", "DEBUG"),
-        "ZION_ENDPOINT": os.getenv("ZION_ENDPOINT", ""),
+        "ZION_ENDPOINT": os.getenv("ZION_ENDPOINT", "http://zion.local:8080"),
     }
+    return config
 
 
-def validate_config(config: dict[str, str]) -> list[str]:
-    return [k for k in REQUIRED_KEYS if not config.get(k)]
-
-
-def display_config(config: dict[str, str]) -> None:
+def display_configuration(config):
     mode = config["MATRIX_MODE"]
-
     print("ORACLE STATUS: Reading the Matrix...\n")
-    print(f"Configuration loaded:\n  Mode:          {mode}")
-
+    print("Configuration loaded:")
+    print(f"  Mode: {mode}")
     if mode == "production":
-        api = f"***{config['API_KEY'][-4:]}" if config["API_KEY"] else "Not set"
-        db = config["DATABASE_URL"] or "Not set"
-        zion = config["ZION_ENDPOINT"] or "Not set"
+        print("  Database: Connected to production cluster")
+        print("  API Access: " + ("Authenticated" if config["API_KEY"] else "MISSING - CRITICAL"))
+        print(f"  Log Level: {config['LOG_LEVEL']}")
+        print("  Zion Network: Secure (TLS enabled)")
     else:
-        api = "Authenticated" if config["API_KEY"] else "Not set"
-        db = config["DATABASE_URL"] or "Connected to local instance"
-        zion = config["ZION_ENDPOINT"] or "Online"
-
-    print(f"  Database:      {db}")
-    print(f"  API Access:    {api}")
-    print(f"  Log Level:     {config['LOG_LEVEL']}")
-    print(f"  Zion Network:  {zion}")
+        print("  Database: Connected to local instance")
+        print("  API Access: " + ("Authenticated" if config["API_KEY"] else "Not configured (dev mode)"))
+        print(f"  Log Level: {config['LOG_LEVEL']}")
+        print("  Zion Network: Online")
 
 
-def security_check(config: dict[str, str]) -> None:
+def security_check(config):
     print("\nEnvironment security check:")
-
-    weak = ["password", "secret", "12345", "admin"]
-    if any(w in config["API_KEY"].lower() for w in weak):
-        print("  [WARNING] Weak API key detected")
+    issues = []
+    suspicious = ["password", "secret", "hardcoded"]
+    api_key = config.get("API_KEY") or ""
+    if any(word in api_key.lower() for word in suspicious):
+        issues.append("Possible hardcoded secret in API_KEY")
     else:
         print("  [OK] No hardcoded secrets detected")
+    if os.path.exists(".env"):
+        print("  [OK] .env file properly configured")
+    else:
+        print("  [WARN] No .env file found (using defaults or environment variables)")
+    if os.getenv("MATRIX_MODE") or os.getenv("API_KEY"):
+        print("  [OK] Production overrides available")
+    else:
+        print("  [INFO] No environment variable overrides detected")
+    if issues:
+        for issue in issues:
+            print(f"  [WARN] {issue}")
+        sys.exit(1)
 
-    print(
-        "  [OK] .env file properly configured"
-        if os.path.isfile(".env")
-        else "  [WARNING] No .env file found"
-    )
 
-    if os.path.isfile(".env.example"):
-        print("  [OK] .env.example present")
-
-    print("  [OK] Production overrides available")
-
-
-def main() -> None:
+def main():
+    load_configuration()
     config = get_config()
-    missing = validate_config(config)
-
-    display_config(config)
-
-    if missing:
-        print("\n[WARNING] Missing configuration:")
-        for k in missing:
-            print(f"  - {k}")
-
+    display_configuration(config)
     security_check(config)
-
-    print(f"\n--- Mode: {config['MATRIX_MODE'].upper()} ---")
-    print(
-        "  Secrets masked | Strict logging | Real endpoints"
-        if config["MATRIX_MODE"] == "production"
-        else "  Full debug info | Local endpoints | Verbose logging"
-    )
-
     print("\nThe Oracle sees all configurations.")
 
 
